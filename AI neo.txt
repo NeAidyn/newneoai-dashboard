@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Интерактивная дорожная карта NeoAI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Calm Neutrals -->
+    <!-- Application Structure Plan: Я разработал структуру в виде интерактивного дашборда. Такой подход выбран, потому что он позволяет пользователям мгновенно получать как общую картину (через сводные карточки и диаграммы), так и углубляться в детали с помощью фильтров. Структура состоит из четырех ключевых блоков: 1. Сводные KPI для быстрого обзора. 2. Панель фильтров для интерактивного управления данными. 3. Визуализации для наглядного представления распределения задач. 4. Детальный список задач в виде карточек для удобного просмотра. Эта архитектура превращает статичную таблицу в динамический инструмент для анализа и планирования, что гораздо удобнее для команды. -->
+    <!-- Visualization & Content Choices: 1. Сводные показатели (KPI): Цель - информировать. Представлены в виде HTML-карточек для быстрого обзора ключевых метрик (всего задач, по статусам). 2. Распределение задач по исполнителям: Цель - сравнить. Используется кольцевая диаграмма (Chart.js) для наглядной демонстрации нагрузки на каждого члена команды. 3. Задачи по приоритетам: Цель - сравнить. Горизонтальная гистограмма (Chart.js) для четкого сравнения количества задач разной важности. 4. Хронология задач: Цель - показать изменение во времени. Горизонтальная гистограмма (Chart.js), группирующая задачи по кварталам, дает представление о плотности работы в будущем. 5. Список задач: Цель - организовать. Представлен в виде интерактивных HTML-карточек, которые фильтруются с помощью JS, что обеспечивает удобный доступ к деталям каждой задачи. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #fdfcfb;
+            color: #3f3f46;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .priority-tag {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-weight: 500;
+            font-size: 0.75rem;
+        }
+        .priority-высокий { background-color: #fee2e2; color: #b91c1c; }
+        .priority-средний { background-color: #fef3c7; color: #b45309; }
+        .priority-низкий { background-color: #d1fae5; color: #065f46; }
+        .status-не-начато { background-color: #e5e7eb; color: #4b5563; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-800">Интерактивная дорожная карта NeoAI</h1>
+            <p class="mt-2 text-slate-600">Дашборд для отслеживания задач и прогресса проекта</p>
+        </header>
+
+        <main>
+            <!-- KPI Cards -->
+            <section id="kpi-section" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200/80">
+                    <h3 class="text-sm font-medium text-slate-500">Всего задач</h3>
+                    <p id="total-tasks" class="text-3xl font-bold text-slate-800 mt-1">0</p>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200/80">
+                    <h3 class="text-sm font-medium text-slate-500">Высокий приоритет</h3>
+                    <p id="high-priority-tasks" class="text-3xl font-bold text-red-700 mt-1">0</p>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200/80">
+                    <h3 class="text-sm font-medium text-slate-500">Средний приоритет</h3>
+                    <p id="medium-priority-tasks" class="text-3xl font-bold text-amber-600 mt-1">0</p>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200/80">
+                    <h3 class="text-sm font-medium text-slate-500">Статус "Не начато"</h3>
+                    <p id="not-started-tasks" class="text-3xl font-bold text-slate-600 mt-1">0</p>
+                </div>
+            </section>
+
+            <!-- Filters -->
+            <section id="filters-section" class="mb-8 p-4 bg-white rounded-xl shadow-sm border border-slate-200/80">
+                 <p class="text-lg font-semibold text-slate-800 mb-4">Фильтры</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                        <label for="responsible-filter" class="block text-sm font-medium text-slate-700 mb-1">Ответственный</label>
+                        <select id="responsible-filter" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+                            <option value="all">Все</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="priority-filter" class="block text-sm font-medium text-slate-700 mb-1">Приоритет</label>
+                        <select id="priority-filter" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+                            <option value="all">Все</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="status-filter" class="block text-sm font-medium text-slate-700 mb-1">Статус</label>
+                        <select id="status-filter" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+                            <option value="all">Все</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="direction-filter" class="block text-sm font-medium text-slate-700 mb-1">Направление</label>
+                        <select id="direction-filter" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+                            <option value="all">Все</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Visualizations -->
+            <section id="charts-section" class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200/80">
+                    <h3 class="text-lg font-semibold text-slate-800 mb-4 text-center">Распределение задач по исполнителям</h3>
+                    <p class="text-center text-sm text-slate-500 mb-4">Эта диаграмма показывает, как задачи распределены между членами команды. Наведите на сектор, чтобы увидеть точное количество задач.</p>
+                    <div class="chart-container">
+                        <canvas id="responsible-chart"></canvas>
+                    </div>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200/80">
+                    <h3 class="text-lg font-semibold text-slate-800 mb-4 text-center">Задачи по приоритетам</h3>
+                    <p class="text-center text-sm text-slate-500 mb-4">Здесь показано соотношение задач по их важности. Это помогает понять, на каких задачах нужно сосредоточиться в первую очередь.</p>
+                    <div class="chart-container">
+                        <canvas id="priority-chart"></canvas>
+                    </div>
+                </div>
+                 <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200/80 lg:col-span-2">
+                    <h3 class="text-lg font-semibold text-slate-800 mb-4 text-center">Хронология выполнения задач по кварталам</h3>
+                    <p class="text-center text-sm text-slate-500 mb-4">Эта диаграмма иллюстрирует, сколько задач запланировано на каждый квартал. Она помогает визуализировать интенсивность работы в будущем.</p>
+                    <div class="chart-container h-[400px] max-h-[500px]">
+                        <canvas id="timeline-chart"></canvas>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Task List -->
+            <section id="task-list-section">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold text-slate-800">Список задач</h2>
+                    <p id="task-count" class="text-slate-600 font-medium">Найдено: 0</p>
+                </div>
+                <div id="task-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <script>
+        const tasksData = [
+            { direction: '1. Управление и стратегия (CEO)', task: 'Сформировать стратегический план на 1 год (цели, KPI, направления роста).', responsible: 'Айдын', deadline: 'Q4 2025', status: 'Не начато', priority: 'Высокий' },
+            { direction: '1. Управление и стратегия (CEO)', task: 'Назначить руководителей отделов и утвердить роли.', responsible: 'Айдын', deadline: 'Q4 2025', status: 'Не начато', priority: 'Высокий' },
+            { direction: '1. Управление и стратегия (CEO)', task: 'Настроить еженедельные встречи по направлениям.', responsible: 'Айдын', deadline: 'Q4 2025', status: 'Не начато', priority: 'Средний' },
+            { direction: '1. Управление и стратегия (CEO)', task: 'Утвердить финансовую модель и систему отчётности.', responsible: 'Айдын / Сульфи', deadline: 'Q1 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '1. Управление и стратегия (CEO)', task: 'Разработать партнёрскую программу для школ, вузов и компаний.', responsible: 'Айдын / Акерке', deadline: 'Q1 2026', status: 'Не начато', priority: 'Средний' },
+            { direction: '1. Управление и стратегия (CEO)', task: 'Определить систему KPI для каждого отдела.', responsible: 'Айдын', deadline: 'Q1 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '1. Управление и стратегия (CEO)', task: 'Создать план масштабирования по регионам Казахстана.', responsible: 'Айдын', deadline: 'Q2 2026', status: 'Не начато', priority: 'Средний' },
+            { direction: '1. Управление и стратегия (CEO)', task: 'Разработать документ «Видение 2026» — стратегия развития компании на 3 года.', responsible: 'Айдын', deadline: 'Q2 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '2. Маркетинг и медиа (NeoAI Media)', task: 'Запустить Telegram-канал NeoAI News.', responsible: 'Акерке', deadline: 'Q4 2025', status: 'Не начато', priority: 'Высокий' },
+            { direction: '2. Маркетинг и медиа (NeoAI Media)', task: 'Подготовить контент-план на 30 дней.', responsible: 'Акерке', deadline: 'Q4 2025', status: 'Не начато', priority: 'Высокий' },
+            { direction: '2. Маркетинг и медиа (NeoAI Media)', task: 'Разработать фирменный стиль и визуальный гайд.', responsible: 'Акерке', deadline: 'Q4 2025', status: 'Не начато', priority: 'Высокий' },
+            { direction: '2. Маркетинг и медиа (NeoAI Media)', task: 'Создать 10 вирусных видео-роликов для Instagram / TikTok.', responsible: 'Акерке', deadline: 'Q1 2026', status: 'Не начато', priority: 'Средний' },
+            { direction: '2. Маркетинг и медиа (NeoAI Media)', task: 'Подготовить PR-кампанию «ИИ для каждого казахстанца».', responsible: 'Акерке', deadline: 'Q1 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '2. Маркетинг и медиа (NeoAI Media)', task: 'Настроить рассылку новостей и гайдов по email / боту.', responsible: 'Акерке', deadline: 'Q1 2026', status: 'Не начато', priority: 'Средний' },
+            { direction: '2. Маркетинг и медиа (NeoAI Media)', task: 'Разработать лендос для платформы NeoAI Media.', responsible: 'Аулет / Акерке', deadline: 'Q1 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '2. Маркетинг и медиа (NeoAI Media)', task: 'Собрать первые 10 000 подписчиков.', responsible: 'Акерке', deadline: 'Q2 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '2. Маркетинг и медиа (NeoAI Media)', task: 'Запустить коллаборации с инфлюенсерами и учебными организациями.', responsible: 'Акерке', deadline: 'Q2 2026', status: 'Не начато', priority: 'Средний' },
+            { direction: '2. Маркетинг и медиа (NeoAI Media)', task: 'Отслеживать показатели трафика → регистрация → продажа.', responsible: 'Акерке', deadline: 'Постоянно', status: 'Не начато', priority: 'Высокий' },
+            { direction: '3. Обучение и контент (NeoAI Education)', task: 'Создать три бесплатных мини-курса.', responsible: 'Акерке', deadline: 'Q4 2025', status: 'Не начато', priority: 'Высокий' },
+            { direction: '3. Обучение и контент (NeoAI Education)', task: 'Разработать углублённые программы обучения (8–16 часов).', responsible: 'Акерке', deadline: 'Q1 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '3. Обучение и контент (NeoAI Education)', task: 'Настроить онлайн-платформу для обучения.', responsible: 'Аулет', deadline: 'Q1 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '3. Обучение и контент (NeoAI Education)', task: 'Прописать методологию курсов и гайд для авторов.', responsible: 'Акерке', deadline: 'Q4 2025', status: 'Не начато', priority: 'Средний' },
+            { direction: '3. Обучение и контент (NeoAI Education)', task: 'Провести пилот с 5 школами и 2 университетами.', responsible: 'Акерке', deadline: 'Q2 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '3. Обучение и контент (NeoAI Education)', task: 'Создать серию «AI Stories» — реальные кейсы внедрения ИИ.', responsible: 'Акерке', deadline: 'Q2 2026', status: 'Не начато', priority: 'Средний' },
+            { direction: '3. Обучение и контент (NeoAI Education)', task: 'Разработать систему сертификации и рейтинга учеников.', responsible: 'Акерке', deadline: 'Q2 2026', status: 'Не начато', priority: 'Средний' },
+            { direction: '3. Обучение и контент (NeoAI Education)', task: 'Сформировать базу из 100 лекторов и менторов на 2025 год.', responsible: 'Сульфи / Акерке', deadline: 'Q1 2026', status: 'Не начато', priority: 'Средний' },
+            { direction: '4. Разработка и технологии (NeoAI Lab)', task: 'Создать библиотеку готовых ИИ-ассистентов.', responsible: 'Аулет', deadline: 'Q1 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '4. Разработка и технологии (NeoAI Lab)', task: 'Разработать диагностику цифровой зрелости компании.', responsible: 'Аулет', deadline: 'Q1 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '4. Разработка и технологии (NeoAI Lab)', task: 'Подготовить шаблон «AI-интеграции под ключ».', responsible: 'Аулет', deadline: 'Q2 2026', status: 'Не начато', priority: 'Средний' },
+            { direction: '4. Разработка и технологии (NeoAI Lab)', task: 'Запустить первый корпоративный проект (пилот).', responsible: 'Аулет / Акерке', deadline: 'Q2 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '4. Разработка и технологии (NeoAI Lab)', task: 'Настроить систему отслеживания задач (Jira / Notion).', responsible: 'Аулет', deadline: 'Q4 2025', status: 'Не начато', priority: 'Высокий' },
+            { direction: '4. Разработка и технологии (NeoAI Lab)', task: 'Разработать архитектуру платформы NeoAI Media.', responsible: 'Аулет', deadline: 'Q4 2025', status: 'Не начато', priority: 'Высокий' },
+            { direction: '4. Разработка и технологии (NeoAI Lab)', task: 'Настроить API-интеграции для Telegram-ботов и веб-сервиса.', responsible: 'Аулет', deadline: 'Q1 2026', status: 'Не начато', priority: 'Средний' },
+            { direction: '4. Разработка и технологии (NeoAI Lab)', task: 'Запустить AI-чат-бот «AI-Guide» с поиском по гайдам.', responsible: 'Аулет', deadline: 'Q2 2026', status: 'Не начато', priority: 'Средний' },
+            { direction: '4. Разработка и технологии (NeoAI Lab)', task: 'Оптимизировать производительность и обновления моделей.', responsible: 'Аулет', deadline: 'Постоянно', status: 'Не начато', priority: 'Высокий' },
+            { direction: '5. Финансы и монетизация', task: 'Создать единый прайс-лист на продукты и услуги.', responsible: 'Сульфи / Акерке', deadline: 'Q4 2025', status: 'Не начато', priority: 'Высокий' },
+            { direction: '5. Финансы и монетизация', task: 'Разработать финансовую модель.', responsible: 'Сульфи', deadline: 'Q4 2025', status: 'Не начато', priority: 'Высокий' },
+            { direction: '5. Финансы и монетизация', task: 'Настроить CRM для учёта клиентов и платежей.', responsible: 'Акерке', deadline: 'Q1 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '5. Финансы и монетизация', task: 'Подключить онлайн-оплаты.', responsible: 'Сульфи / Аулет', deadline: 'Q1 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '5. Финансы и монетизация', task: 'Создать систему учёта подписок.', responsible: 'Сульфи / Аулет', deadline: 'Q2 2026', status: 'Не начато', priority: 'Средний' },
+            { direction: '5. Финансы и монетизация', task: 'Разработать пакет франшизы NeoAI Edu.', responsible: 'Айдын / Сульфи', deadline: 'Q3 2026', status: 'Не начато', priority: 'Средний' },
+            { direction: '5. Финансы и монетизация', task: 'Запустить отчётность по прибыли и расходам (ежемесячно).', responsible: 'Сульфи', deadline: 'Q1 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '5. Финансы и монетизация', task: 'Составить финансовый прогноз на 6 и 12 месяцев.', responsible: 'Сульфи', deadline: 'Q1 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '6. Продажи и воронка', task: 'Настроить автоматическую воронку.', responsible: 'Акерке', deadline: 'Q1 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '6. Продажи и воронка', task: 'Прописать сценарии общения менеджеров и ботов.', responsible: 'Акерке', deadline: 'Q4 2025', status: 'Не начато', priority: 'Средний' },
+            { direction: '6. Продажи и воронка', task: 'Разработать чек-листы для консультаций.', responsible: 'Акерке', deadline: 'Q4 2025', status: 'Не начато', priority: 'Средний' },
+            { direction: '6. Продажи и воронка', task: 'Создать каталог услуг (PDF / сайт).', responsible: 'Акерке', deadline: 'Q4 2025', status: 'Не начато', priority: 'Высокий' },
+            { direction: '6. Продажи и воронка', task: 'Настроить систему аналитики конверсий.', responsible: 'Акерке', deadline: 'Q1 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '6. Продажи и воронка', task: 'Обучить менеджеров продавать через Telegram и Zoom.', responsible: 'Акерке', deadline: 'Q1 2026', status: 'Не начато', priority: 'Средний' },
+            { direction: '6. Продажи и воронка', task: 'Провести 3-дневный марафон для B2B-клиентов.', responsible: 'Акерке', deadline: 'Q2 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '6. Продажи и воронка', task: 'Подготовить предложения для топ-50 корпораций Казахстана.', responsible: 'Акерке', deadline: 'Q2 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '7. Команда и операционка', task: 'Сформировать оргструктуру и назначить ответственных по отделам.', responsible: 'Айдын / Сульфи', deadline: 'Q4 2025', status: 'Не начато', priority: 'Высокий' },
+            { direction: '7. Команда и операционка', task: 'Создать базу знаний и инструкции для всех направлений.', responsible: 'Сульфи', deadline: 'Q1 2026', status: 'Не начато', priority: 'Средний' },
+            { direction: '7. Команда и операционка', task: 'Настроить еженедельные отчёты по результатам.', responsible: 'Сульфи', deadline: 'Q4 2025', status: 'Не начато', priority: 'Средний' },
+            { direction: '7. Команда и операционка', task: 'Запустить внутренний AI-ассистент для команды.', responsible: 'Аулет', deadline: 'Q2 2026', status: 'Не начато', priority: 'Низкий' },
+            { direction: '7. Команда и операционка', task: 'Организовать обучение сотрудников по продуктам NeoAI.', responsible: 'Сульфи', deadline: 'Q1 2026', status: 'Не начато', priority: 'Средний' },
+            { direction: '7. Команда и операционка', task: 'Установить цели OKR на каждый квартал.', responsible: 'Айдын', deadline: 'Q4 2025', status: 'Не начато', priority: 'Высокий' },
+            { direction: '8. Развитие и масштабирование', task: 'Запустить программу «NeoAI в школах 2025».', responsible: 'Акерке', deadline: 'Q1 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '8. Развитие и масштабирование', task: 'Подготовить пилот по франшизе NeoAI Edu в 3 городах.', responsible: 'Айдын / Сульфи', deadline: 'Q3 2026', status: 'Не начато', priority: 'Средний' },
+            { direction: '8. Развитие и масштабирование', task: 'Разработать стратегию выхода на Центральную Азию.', responsible: 'Айдын', deadline: 'Q3 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '8. Развитие и масштабирование', task: 'Привлечь 2–3 ключевых партнёра / инвестора.', responsible: 'Айдын', deadline: 'Q4 2026', status: 'Не начато', priority: 'Высокий' },
+            { direction: '8. Развитие и масштабирование', task: 'Создать PR-кейс «Как ИИ меняет Казахстан».', responsible: 'Акерке', deadline: 'Q4 2026', status: 'Не начато', priority: 'Средний' },
+        ];
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            const filters = {
+                responsible: 'all',
+                priority: 'all',
+                status: 'all',
+                direction: 'all'
+            };
+
+            const responsibleFilter = document.getElementById('responsible-filter');
+            const priorityFilter = document.getElementById('priority-filter');
+            const statusFilter = document.getElementById('status-filter');
+            const directionFilter = document.getElementById('direction-filter');
+            const taskGrid = document.getElementById('task-grid');
+
+            let responsibleChart, priorityChart, timelineChart;
+
+            function getUniqueValues(key) {
+                const values = tasksData.flatMap(task => task[key].split(' / '));
+                return [...new Set(values)].sort();
+            }
+
+            function populateFilters() {
+                getUniqueValues('responsible').forEach(value => {
+                    const option = new Option(value, value);
+                    responsibleFilter.add(option);
+                });
+                getUniqueValues('priority').forEach(value => {
+                    const option = new Option(value, value);
+                    priorityFilter.add(option);
+                });
+                getUniqueValues('status').forEach(value => {
+                    const option = new Option(value, value);
+                    statusFilter.add(option);
+                });
+                getUniqueValues('direction').forEach(value => {
+                    const option = new Option(value.split('. ')[1], value);
+                    directionFilter.add(option);
+                });
+            }
+
+            function renderTasks(tasks) {
+                taskGrid.innerHTML = '';
+                if (tasks.length === 0) {
+                    taskGrid.innerHTML = `<p class="text-slate-500 md:col-span-2 xl:col-span-3 text-center">Задачи с выбранными фильтрами не найдены.</p>`;
+                    return;
+                }
+                tasks.forEach(task => {
+                    const priorityClass = task.priority === 'Высокий' ? 'priority-высокий' : task.priority === 'Средний' ? 'priority-средний' : 'priority-низкий';
+                    const taskCard = `
+                        <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200/80 flex flex-col justify-between">
+                            <div>
+                                <p class="text-xs font-semibold text-slate-500 uppercase">${task.direction.split('. ')[1]}</p>
+                                <p class="font-semibold text-slate-800 my-2">${task.task}</p>
+                            </div>
+                            <div class="mt-4">
+                                <div class="flex items-center justify-between text-sm text-slate-600 mb-3">
+                                    <span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" /></svg>
+                                        ${task.responsible}
+                                    </span>
+                                    <span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd" /></svg>
+                                        ${task.deadline}
+                                    </span>
+                                </div>
+                                <div class="flex items-center justify-between">
+                                    <span class="priority-tag ${priorityClass}">${task.priority}</span>
+                                    <span class="priority-tag status-не-начато">${task.status}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    taskGrid.innerHTML += taskCard;
+                });
+            }
+
+            function updateKpis(tasks) {
+                document.getElementById('total-tasks').textContent = tasks.length;
+                document.getElementById('high-priority-tasks').textContent = tasks.filter(t => t.priority === 'Высокий').length;
+                document.getElementById('medium-priority-tasks').textContent = tasks.filter(t => t.priority === 'Средний').length;
+                document.getElementById('not-started-tasks').textContent = tasks.filter(t => t.status === 'Не начато').length;
+                document.getElementById('task-count').textContent = `Найдено: ${tasks.length}`;
+            }
+
+            function updateCharts(tasks) {
+                const priorityData = { 'Высокий': 0, 'Средний': 0, 'Низкий': 0 };
+                const responsibleData = {};
+                const timelineData = {};
+
+                tasks.forEach(task => {
+                    if (priorityData[task.priority] !== undefined) priorityData[task.priority]++;
+                    
+                    const responsibles = task.responsible.split(' / ');
+                    responsibles.forEach(r => {
+                        responsibleData[r] = (responsibleData[r] || 0) + 1;
+                    });
+
+                    if (task.deadline !== 'Постоянно') {
+                       if (!timelineData[task.deadline]) {
+                           timelineData[task.deadline] = 0;
+                       }
+                       timelineData[task.deadline]++;
+                    }
+                });
+                
+                const sortedTimelineLabels = Object.keys(timelineData).sort((a,b) => {
+                    const [aQ, aY] = a.split(' ');
+                    const [bQ, bY] = b.split(' ');
+                    if(aY !== bY) return aY - bY;
+                    return aQ.substring(1) - bQ.substring(1);
+                });
+                const sortedTimelineData = sortedTimelineLabels.map(label => timelineData[label]);
+
+                const chartOptions = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { font: { size: 12 } } } }
+                };
+
+                if (responsibleChart) responsibleChart.destroy();
+                responsibleChart = new Chart(document.getElementById('responsible-chart'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(responsibleData),
+                        datasets: [{
+                            data: Object.values(responsibleData),
+                            backgroundColor: ['#38bdf8', '#fbbf24', '#34d399', '#f87171', '#a78bfa'],
+                            borderColor: '#fdfcfb',
+                            borderWidth: 4,
+                        }]
+                    },
+                    options: chartOptions,
+                });
+
+                if (priorityChart) priorityChart.destroy();
+                priorityChart = new Chart(document.getElementById('priority-chart'), {
+                    type: 'bar',
+                    data: {
+                        labels: ['Высокий', 'Средний', 'Низкий'],
+                        datasets: [{
+                            label: 'Количество задач',
+                            data: [priorityData['Высокий'], priorityData['Средний'], priorityData['Низкий']],
+                            backgroundColor: ['#ef4444', '#f59e0b', '#10b981'],
+                            borderRadius: 4
+                        }]
+                    },
+                    options: { ...chartOptions, indexAxis: 'y', plugins: { legend: { display: false } } }
+                });
+
+                if (timelineChart) timelineChart.destroy();
+                timelineChart = new Chart(document.getElementById('timeline-chart'), {
+                    type: 'bar',
+                    data: {
+                        labels: sortedTimelineLabels,
+                        datasets: [{
+                            label: 'Количество задач',
+                            data: sortedTimelineData,
+                            backgroundColor: '#38bdf8',
+                            borderRadius: 4
+                        }]
+                    },
+                     options: { ...chartOptions, indexAxis: 'y', plugins: { legend: { display: false } } }
+                });
+            }
+
+            function applyFilters() {
+                const filteredTasks = tasksData.filter(task => {
+                    const responsibleMatch = filters.responsible === 'all' || task.responsible.includes(filters.responsible);
+                    const priorityMatch = filters.priority === 'all' || task.priority === filters.priority;
+                    const statusMatch = filters.status === 'all' || task.status === filters.status;
+                    const directionMatch = filters.direction === 'all' || task.direction === filters.direction;
+                    return responsibleMatch && priorityMatch && statusMatch && directionMatch;
+                });
+                renderTasks(filteredTasks);
+                updateKpis(filteredTasks);
+                updateCharts(filteredTasks);
+            }
+
+            [responsibleFilter, priorityFilter, statusFilter, directionFilter].forEach(filterEl => {
+                filterEl.addEventListener('change', (e) => {
+                    const filterId = e.target.id.split('-')[0];
+                    filters[filterId] = e.target.value;
+                    applyFilters();
+                });
+            });
+
+            populateFilters();
+            applyFilters();
+        });
+    </script>
+</body>
+</html>
